@@ -14,6 +14,7 @@ std::atomic_bool g_server_ready{false};   // definition (not just declaration)
 RpcServer::RpcServer() : running_(true) {
     listener_thread_ = std::thread(&RpcServer::runRequestListener, this);
     std::fprintf(stdout, "[rpc_server] Request listener started\n");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Give some time for the server to start
 }
 
 RpcServer::~RpcServer() {
@@ -61,6 +62,11 @@ bool RpcServer::ProcessNextRequest() {
     // shift the payload to remove request_id if handlers shouldn't see it
     uint8_t* payload_start = buf.data + sizeof(uint32_t);
     int32_t payload_len = len - sizeof(uint32_t);
+
+    if (payload_len < 2 || payload_start[0] == 0 || payload_start[1] == 0) {
+        printf("[Server] Likely invalid or empty message payload!\n");
+    }
+
 
     RpcEnvelope env = RpcEnvelope_init_zero;
     pb_istream_t istream = pb_istream_from_buffer(payload_start, payload_len);

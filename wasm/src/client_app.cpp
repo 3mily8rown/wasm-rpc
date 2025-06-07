@@ -6,6 +6,8 @@
 #include "rpc_envelope.pb.h"
 #include <iostream>
 #include <unordered_set>
+#include <time.h>
+
 
 extern "C" {
     int64_t get_time_us();
@@ -123,35 +125,8 @@ int send_varied_messages(int count) {
     return 0;
 }
 
-int send_async_messages(int count) {
-    RpcClient client;
-
-    int64_t initial_time = get_time_us();
-    for (int i = 0; i < count; i++) {
-        int64_t t0 = get_time_us();
-
-        uint32_t id = client.sendMessageAsync(i, "hello from client");
-        if (id == 0) {
-            std::fprintf(stderr, "Failed to send message\n");
-            return 1;
-        }
-        std::string result;
-        
-        while (!client.pollSendMessageResponse(id, result)) {
-            // Polling for response, could add a timeout or sleep here
-        }
-            
-        int64_t t1 = get_time_us();
-        send_rtt(static_cast<uint32_t>(t1 - t0));
-    }
-
-    send_total(static_cast<uint32_t>(get_time_us() - initial_time), count);
-    return 0;
-}
-
 int send_async_messages_test(int count) {
     RpcClient client;
-    // std::unordered_map<uint32_t, int64_t> start_times;
     std::unordered_set<uint32_t> pending_ids;
 
     int64_t start_time = get_time_us();
@@ -164,9 +139,12 @@ int send_async_messages_test(int count) {
             std::fprintf(stderr, "Failed to send message\n");
             return 1;
         }
-        // start_times[id] = get_time_us();
         pending_ids.insert(id);
     }
+
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = 50 * 1000; // 50 microseconds
 
     // 2. Poll until all responses received
     std::string result;
@@ -175,14 +153,16 @@ int send_async_messages_test(int count) {
 
         for (uint32_t id : pending_ids) {
             if (client.pollSendMessageResponse(id, result)) {
-                // int64_t end_time = get_time_us();
-                // send_rtt(static_cast<uint32_t>(end_time - start_times[id]));
                 completed.push_back(id);
             }
         }
 
         for (uint32_t id : completed) {
             pending_ids.erase(id);
+        }
+
+        if (completed.empty()) {
+            nanosleep(&ts, nullptr);
         }
     }
 

@@ -25,9 +25,14 @@ add_custom_command(
   OUTPUT "${VENV_CREATED_MARKER}"
   COMMAND python3 -m venv "${VENV_DIR}"
   COMMAND "${VENV_PYTHON}" -m pip install --upgrade pip
-  COMMAND "${VENV_PYTHON}" -m pip install protobuf==3.20.3
+  COMMAND env CC=/usr/bin/clang CXX=/usr/bin/clang++ "${VENV_PYTHON}" -m pip install --no-binary=protobuf protobuf==3.20.3 grpcio-tools
+  # Regenerate nanopb_pb2.py inside the correct protobuf runtime
+  COMMAND "${VENV_PYTHON}" -m grpc_tools.protoc
+          --proto_path="${nanopb_SOURCE_DIR}/generator/proto"
+          --python_out="${nanopb_SOURCE_DIR}/generator/proto"
+          "${nanopb_SOURCE_DIR}/generator/proto/nanopb.proto"
   COMMAND ${CMAKE_COMMAND} -E touch "${VENV_CREATED_MARKER}"
-  COMMENT "Creating temporary virtual environment and installing protobuf==3.20.3"
+  COMMENT "Creating venv, installing protobuf from source, and regenerating nanopb_pb2.py"
 )
 
 add_custom_target(nano_venv DEPENDS "${VENV_CREATED_MARKER}")
@@ -35,7 +40,11 @@ add_custom_target(nano_venv DEPENDS "${VENV_CREATED_MARKER}")
 # Path to your .proto files
 set(PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 
-find_program(SYSTEM_PROTOC protoc)
+find_program(SYSTEM_PROTOC
+  NAMES protoc
+  PATHS "/home/eb/fyp/protobuf-older/protobuf/build"
+  NO_DEFAULT_PATH
+)
 if(NOT SYSTEM_PROTOC)
   message(FATAL_ERROR "protoc not found; please install protobuf-compiler")
 endif()

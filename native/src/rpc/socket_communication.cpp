@@ -19,6 +19,7 @@ in_addr_t resolve_ip_or_throw(const char* hostname);
 
 
 void socket_listener(int port, in_addr_t ip) {
+    std::cout << "[Native] Starting socket going to listen on port " << port << "\n";
     // 1) Create socket
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {

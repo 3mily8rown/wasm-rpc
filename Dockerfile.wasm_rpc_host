@@ -2,6 +2,9 @@ FROM ubuntu:24.04
 
 # Install required tools
 RUN apt-get update && apt-get install -y time
+RUN apt-get install -y netcat-openbsd
+
+
 
 # Set working directory
 WORKDIR /app

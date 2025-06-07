@@ -6,6 +6,7 @@
 #include "rpc_envelope.pb.h"
 #include <iostream>
 #include <chrono>
+#include <unordered_set>
 
 int64_t get_time_us() {
     using namespace std::chrono;
@@ -17,8 +18,9 @@ void send_rtt(uint32_t time_us) {
 }
 void send_total(uint32_t total_time_us, int count) {
     // This function would send the total time and count to the server or log it
-    uint32_t throughput = (count > 0) ? (total_time_us / count) : 0;
-    std::cout << "[METRICS] THROUGHPUT = " << throughput << "μs" << std::endl;
+    std::cout << "[METRICS] TOTAL TIME = " << total_time_us << "μs for " << count << " messages" << std::endl;
+    // uint32_t throughput = (count > 0) ? (total_time_us / count) : 0;
+    // std::cout << "[METRICS] THROUGHPUT = " << throughput << "μs" << std::endl;
 }
 
 // main function implemenations for evaluation purposes
@@ -44,6 +46,7 @@ int send_x_messages(int count) {
 }
 
 int send_x_messages_no_rtt(int count) {
+    std::cout << "here1";
     RpcClient client;
 
     int64_t initial_time = get_time_us();
@@ -160,6 +163,55 @@ int send_async_messages(int count) {
     return 0;
 }
 
+int send_async_messages_test(int count) {
+    std::cout << "Starting async messages test with count: " << count << std::endl;
+    RpcClient client;
+    std::cout << "Client initialized." << std::endl;
+    std::unordered_set<uint32_t> pending_ids;
+
+    int64_t start_time = get_time_us();
+
+    std::cout << "Starting to send messages asynchronously..." << std::endl;
+    // 1. Send all messages
+    for (int i = 0; i < count; ++i) {
+        std::string msg = "hello from client " + std::to_string(i);
+        uint32_t id = client.sendMessageAsync(i, msg.c_str());
+        if (id == 0) {
+            std::fprintf(stderr, "Failed to send message\n");
+            return 1;
+        }
+        pending_ids.insert(id);
+    }
+
+    std::cout << "All messages sent, pending IDs count: " << pending_ids.size() << std::endl;
+    // 2. Poll until all responses received
+    std::string result;
+    while (!pending_ids.empty()) {
+        std::vector<uint32_t> completed;
+
+        for (uint32_t id : pending_ids) {
+            if (client.pollSendMessageResponse(id, result)) {
+                // std::cout << "Received response for ID: " << id << "\n";
+
+                completed.push_back(id);
+            }
+        }
+
+        for (uint32_t id : completed) {
+            pending_ids.erase(id);
+        }
+
+        if (completed.empty()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        }
+    }
+
+    int64_t total_time = get_time_us() - start_time;
+    send_total(static_cast<uint32_t>(total_time), count);
+    return 0;
+}
+
+
 int send_batch_messages(int count) {
     RpcClient client;
 
@@ -195,7 +247,12 @@ int send_batch_messages(int count) {
 }
 
 int main() {
-    send_x_messages_no_rtt(10000);
+    std::cout << "Starting client application..." << std::endl;
+    // send_x_messages_no_rtt(10000);
+    // std::cout << "Finished sending messages without RTT." << std::endl;
+    send_async_messages_test(10000);
+    // std::cout << "Finished sending async messages." << std::endl;
+    // send_x_messages(1);
     // send_x_messages(10000);
     // send_async_messages(1);
     // send_batch_messages(3);

@@ -51,6 +51,7 @@ int32_t dequeue_message_with_timeout(uint8_t* dest, uint32_t max_length, int tim
 }
 
 void begin_wait_for_response(uint32_t request_id) {
+    // std::cout << "[begin_wait_for_response] Request ID: " << request_id << "\n";
     std::lock_guard<std::mutex> lock(g_response_slots_mtx);
     if (g_response_slots.count(request_id)) {
         std::cerr << "[begin_wait_for_response] Duplicate request_id: " << request_id << "\n";

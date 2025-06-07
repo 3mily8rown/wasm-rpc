@@ -14,6 +14,7 @@
 
 RpcClient::RpcClient() : running_(true) {
     listener_thread_ = std::thread(&RpcClient::runResponseListener, this);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Give some time for the server to start
 }
 
 
@@ -252,6 +253,12 @@ bool RpcClient::pollResponse(uint32_t expected_tag, uint32_t request_id, T* out_
     }
 
     int32_t len = receive_rpcresponse_with_id(buf, 512, request_id);
+    if (len == 0) {
+        // std::fprintf(stderr, "response not ready yet for request_id %u\n", request_id);
+        std::free(buf);
+        return false;
+    }
+
     bool success = (len > 0) && decodeResponse<T>(buf, len, expected_tag, request_id, out_msg);
     if (!success) {
         std::fprintf(stderr, "Failed to decode response for request_id %u\n", request_id);

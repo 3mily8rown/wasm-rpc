@@ -99,7 +99,7 @@ services:
 
 
 
-# Wasm Server and client different processes same container - still networked so idk if this is useful
+# Wasm Server and client different processes same container - networked over localhost
   server_client_same_vm:
     build:
       context: .
@@ -112,9 +112,9 @@ services:
     working_dir: /app
     command: >
       /bin/bash -c "
-        /scripts/measure_resources.sh ./server_host & 
+        taskset -c 2 /scripts/measure_resources.sh ./server_host &
         sleep 1 &&
-        /scripts/measure_resources.sh ./client_host
+        taskset -c 3 /scripts/measure_resources.sh ./client_host
       "
     networks:
       - testnet
@@ -142,8 +142,10 @@ services:
     container_name: cpp_server_container
     volumes:
       - ./baseline2/build:/app
+      - ./evaluation/scripts/measure_resources.sh:/scripts/measure_resources.sh
     working_dir: /app
-    command: ["/bin/bash", "-c", "tc qdisc add dev eth0 root netem delay 0ms 0ms && ./native_server"]
+    command: ["/bin/bash", "/scripts/measure_resources.sh", "./native_server"]
+    # command: ["/bin/bash", "-c", "tc qdisc add dev eth0 root netem delay 0ms 0ms && ./native_server"]
     networks:
       - testnet
     cap_add:
@@ -164,8 +166,10 @@ services:
     container_name: cpp_client_container
     volumes:
       - ./baseline2/build:/app
+      - ./evaluation/scripts/measure_resources.sh:/scripts/measure_resources.sh
     working_dir: /app
-    command: ["/bin/bash", "-c", "tc qdisc add dev eth0 root netem delay 0ms 0ms && ./native_client"]
+    command: ["/bin/bash", "/scripts/measure_resources.sh", "./native_client"]
+    # command: ["/bin/bash", "-c", "tc qdisc add dev eth0 root netem delay 0ms 0ms && ./native_client"]
     depends_on:
       - cpp_server
     networks:
@@ -180,14 +184,25 @@ services:
     cpu_quota: 100000     # Allow 100ms of CPU time = 1 full core
     mem_limit: 1g         # Optional: cap memory to 1 GB
 
+# Not working
 # cpp Server and client different processes same container
   cpp_single_vm:
-    image: ubuntu:24.04
+    build:
+      context: ./baseline2
+      dockerfile: Dockerfile.tc
     container_name: cpp_single_vm_container
     volumes:
-      - ./baseline/build:/app
+      - ./baseline2/build:/app
+      - ./evaluation/scripts/measure_resources.sh:/scripts/measure_resources.sh
     working_dir: /app
-    command: ["/bin/bash", "-c", "./native_server_same && ./native_client_same"]
+    # In docker-compose
+    command: >
+      /bin/bash -c "
+        taskset -c 2 /scripts/measure_resources.sh ./native_server &
+        sleep 1 &&
+        taskset -c 3 /scripts/measure_resources.sh ./native_client
+      "
+    # command: ["/bin/bash", "-c", "./native_server_same && ./native_client_same"]
     # command: ["/bin/bash", "-c", "tc qdisc add dev eth0 root netem delay 0ms && ./native_server_same && sleep 1 && ./native_client_same"]
     networks:
       - testnet

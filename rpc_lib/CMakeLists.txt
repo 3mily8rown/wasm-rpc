@@ -25,8 +25,7 @@ set(VENV_CREATED_MARKER "${VENV_DIR}/.created")
 #   OUTPUT "${VENV_CREATED_MARKER}"
 #   COMMAND python3 -m venv "${VENV_DIR}"
 #   COMMAND "${VENV_PYTHON}" -m pip install --upgrade pip
-#   # COMMAND "${VENV_PYTHON}" -m pip install protobuf==3.20.3
-#   COMMAND "${VENV_PYTHON}" -m pip install protobuf==4.23.4
+#   COMMAND "${VENV_PYTHON}" -m pip install protobuf==3.20.3
 #   COMMAND ${CMAKE_COMMAND} -E touch "${VENV_CREATED_MARKER}"
 #   COMMENT "Creating temporary virtual environment and installing protobuf==3.20.3"
 # )

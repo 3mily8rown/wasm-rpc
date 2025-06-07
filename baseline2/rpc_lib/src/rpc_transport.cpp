@@ -6,6 +6,7 @@
 #include <cstring>
 #include <iostream>
 
+int32_t receive_rpcresponse_internal_nonblocking(uint8_t* dest, uint32_t max_len, uint32_t request_id);
 int32_t receive_rpcresponse_internal(uint8_t* dest, uint32_t max_len, uint32_t request_id);
 
 void add_request_id_to_message(uint8_t* message, uint32_t request_id) {
@@ -28,13 +29,12 @@ int send_rpcmessage(void* ptr, int len) {
 }
 
 int send_rpcmessage_with_id(void* ptr, int len, uint32_t id) {
-    // std::cout << "[send_rpcmessage_with_id] Sending " << len << " bytes from " << ptr
-    //           << " with ID " << id << std::endl;
-    return 0;
     uint32_t full_id = make_full_id(id, get_client_id());
+    // std::cout << "[send_rpcmessage_with_id] Full ID: " << full_id << std::endl;
     add_request_id_to_message(static_cast<uint8_t*>(ptr),  full_id);
     begin_wait_for_response(full_id);
-    send_over_socket(static_cast<uint8_t*>(ptr), message_port);
+    send_over_socket(static_cast<uint8_t*>(ptr), len);
+    return 0;
 }
 
 int receive_rpcresponse(void* ptr, int max_len) {
@@ -46,7 +46,7 @@ int receive_rpcresponse_with_id(void* ptr, int max_len, uint32_t id) {
     // std::cout << "[receive_rpcresponse_with_id] Receiving up to " << max_len
     //           << " bytes into " << ptr << " for ID " << id << std::endl;
     uint32_t full_id = make_full_id(id, get_client_id());
-    return receive_rpcresponse_internal(static_cast<uint8_t*>(ptr), max_len, full_id);
+    return receive_rpcresponse_internal_nonblocking(static_cast<uint8_t*>(ptr), max_len, full_id);
 }
 
 // Server-side transport functions
@@ -81,6 +81,38 @@ int32_t receive_rpcresponse_internal(uint8_t* dest, uint32_t max_len, uint32_t r
         } else {
             std::cerr << "[receive_rpcresponse_internal] No slot found for request_id: " << request_id << "\n";
         }
+    }
+
+    uint32_t copy_len = std::min(max_len, static_cast<uint32_t>(response.size()));
+    std::memcpy(dest, response.data(), copy_len);
+    return copy_len;
+}
+
+int32_t receive_rpcresponse_internal_nonblocking(uint8_t* dest, uint32_t max_len, uint32_t request_id) {
+    std::vector<uint8_t> response;
+
+    {
+        std::lock_guard<std::mutex> lock(g_response_slots_mtx);
+        auto it = g_response_slots.find(request_id);
+        if (it == g_response_slots.end()) {
+            // Slot doesn't exist (shouldn’t happen in correct usage)
+            std::cerr << "[receive_rpcresponse_internal] No slot found for request_id: " << request_id << "\n";
+            return 0;
+        }
+        ResponseSlot* slot = it->second;
+        // Non-blocking check: is the response ready?
+        if (!slot->ready.load(std::memory_order_acquire)) {
+            // Response not ready yet
+            return 0;
+        }
+        // At this point, the response is ready — extract it
+        {
+            std::lock_guard<std::mutex> slot_lock(slot->mtx);
+            response = std::move(slot->response);
+        }
+        // Clean up slot
+        delete slot;
+        g_response_slots.erase(it);
     }
 
     uint32_t copy_len = std::min(max_len, static_cast<uint32_t>(response.size()));

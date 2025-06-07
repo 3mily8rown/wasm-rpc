@@ -26,6 +26,7 @@ bool colocated = false;
 // Function prototypes for internal use
 int32_t send_rpcmessage_internal(uint8_t* src, uint32_t length, uint32_t request_id);
 int32_t receive_rpcresponse_internal(uint8_t* dest, uint32_t max_len, uint32_t request_id);
+int32_t receive_rpcresponse_internal_nonblocking(uint8_t* dest, uint32_t max_len, uint32_t request_id);
 
 void dump_response_slots(const char* context) {
     std::lock_guard<std::mutex> lock(g_response_slots_mtx);
@@ -178,7 +179,7 @@ int32_t receive_rpcresponse_with_id(wasm_exec_env_t exec_env, uint32_t offset,
             return 0;
         }
 
-        return receive_rpcresponse_internal(dest, max_len, make_full_id(local_id, get_thread_id()));
+        return receive_rpcresponse_internal_nonblocking(dest, max_len, make_full_id(local_id, get_thread_id()));
 }
 
 // private helper functions
@@ -192,7 +193,7 @@ int32_t send_rpcmessage_internal(uint8_t* src, uint32_t length, uint32_t request
     } else if (colocated) {
         queue_message(src, length);
     } else {
-        printf("Local server is offline, sending over socket...\n");
+        // printf("Local server is offline, sending over socket...\n");
         send_over_socket(src, length);
     }    
     return 0;
@@ -223,6 +224,38 @@ int32_t receive_rpcresponse_internal(uint8_t* dest, uint32_t max_len, uint32_t r
     return copy_len;
 }
 
+int32_t receive_rpcresponse_internal_nonblocking(uint8_t* dest, uint32_t max_len, uint32_t request_id) {
+    std::vector<uint8_t> response;
+
+    {
+        std::lock_guard<std::mutex> lock(g_response_slots_mtx);
+        auto it = g_response_slots.find(request_id);
+        if (it == g_response_slots.end()) {
+            // Slot doesn't exist (shouldn’t happen in correct usage)
+            std::cerr << "[receive_rpcresponse_internal] No slot found for request_id: " << request_id << "\n";
+            return 0;
+        }
+        ResponseSlot* slot = it->second;
+        // Non-blocking check: is the response ready?
+        if (!slot->ready.load(std::memory_order_acquire)) {
+            // Response not ready yet
+            return 0;
+        }
+        // At this point, the response is ready — extract it
+        {
+            std::lock_guard<std::mutex> slot_lock(slot->mtx);
+            response = std::move(slot->response);
+        }
+        // Clean up slot
+        delete slot;
+        g_response_slots.erase(it);
+    }
+
+    uint32_t copy_len = std::min(max_len, static_cast<uint32_t>(response.size()));
+    std::memcpy(dest, response.data(), copy_len);
+    return copy_len;
+}
+
 // ----------------------------------------------------------
 // Metrics functions
 
@@ -238,6 +271,6 @@ void send_rtt(wasm_exec_env_t exec_env, uint32_t time_us) {
 
 void send_total(wasm_exec_env_t exec_env, uint32_t time_us, uint32_t count) {
     std::cout << "[METRICS] TOTAL TIME = " << time_us << "μs" << std::endl;
-    uint32_t throughput = (count > 0) ? (time_us / count) : 0;
-    std::cout << "[METRICS] THROUGHPUT = " << throughput << "μs" << std::endl;
+    // uint32_t throughput = (count > 0) ? (time_us / count) : 0;
+    // std::cout << "[METRICS] THROUGHPUT = " << throughput << "μs" << std::endl;
 }
