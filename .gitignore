@@ -4,6 +4,7 @@ config/paths*
 .venv
 host_tools
 native/src/CMakeListsArchive
+baseline/metrics
 baseline/build
 baseline/rpc_lib/build
 rpc_lib/build
