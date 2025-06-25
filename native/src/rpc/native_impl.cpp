@@ -28,23 +28,11 @@ int32_t send_rpcmessage_internal(uint8_t* src, uint32_t length, uint32_t request
 int32_t receive_rpcresponse_internal(uint8_t* dest, uint32_t max_len, uint32_t request_id);
 int32_t receive_rpcresponse_internal_nonblocking(uint8_t* dest, uint32_t max_len, uint32_t request_id);
 
-void dump_response_slots(const char* context) {
-    std::lock_guard<std::mutex> lock(g_response_slots_mtx);
-    std::cerr << "[dump_response_slots] " << context << ": ";
-    if (g_response_slots.empty()) {
-        std::cerr << "No active slots.\n";
-        return;
-    }
-    for (const auto& pair : g_response_slots) {
-        std::cerr << "request_id=" << pair.first << " (slot ptr=" << pair.second << "), ";
-    }
-    std::cerr << "\n";
-}
-
 void rpc_server_ready(wasm_exec_env_t env) {
     g_server_ready.store(true, std::memory_order_release);
 }
 
+// sync
 int32_t send_rpcmessage(wasm_exec_env_t exec_env, uint32_t offset, uint32_t length) {
     wasm_module_inst_t inst = wasm_runtime_get_module_inst(exec_env);
     uint8_t* src = static_cast<uint8_t*>(wasm_runtime_addr_app_to_native(inst, offset));
@@ -118,15 +106,7 @@ void send_rpcresponse(wasm_exec_env_t exec_env, uint32_t offset, uint32_t length
     }    
 }
 
-// void send_rpcresponse(wasm_exec_env_t exec_env, uint32_t offset, uint32_t length, uint32_t request_id) {
-//     std::cerr << "[WASM-NATIVE] send_rpcresponse called (likely from WASM)\n";
 
-//     void* stack[20];
-//     int n = backtrace(stack, 20);
-//     backtrace_symbols_fd(stack, n, STDERR_FILENO);
-    
-//     std::abort(); // 💣 TEMPORARY: crash intentionally to find the source
-// }
 
 
 int32_t receive_rpcresponse(wasm_exec_env_t exec_env, uint32_t offset, uint32_t max_len) {
@@ -146,7 +126,6 @@ int32_t receive_rpcresponse(wasm_exec_env_t exec_env, uint32_t offset, uint32_t 
 }
 
 // Asynchronous RPC functions - to handle multiple outstanding requests per client
-
 int32_t send_rpcmessage_with_id(wasm_exec_env_t exec_env, uint32_t offset,
     uint32_t length, uint32_t local_id) {
         wasm_module_inst_t inst = wasm_runtime_get_module_inst(exec_env);
@@ -270,7 +249,7 @@ void send_rtt(wasm_exec_env_t exec_env, uint32_t time_us) {
 }
 
 void send_total(wasm_exec_env_t exec_env, uint32_t time_us, uint32_t count) {
-    std::cout << "[METRICS] TOTAL TIME = " << time_us << "μs" << std::endl;
+    std::cout << "[METRICS] TOTAL TIME = " << time_us << "μs for size " << count << std::endl;
     // uint32_t throughput = (count > 0) ? (time_us / count) : 0;
     // std::cout << "[METRICS] THROUGHPUT = " << throughput << "μs" << std::endl;
 }

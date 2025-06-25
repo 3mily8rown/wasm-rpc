@@ -45,6 +45,8 @@ static void *wasm_thread_entry(void *raw_arg) {
     // Call WASM function
     if (!call_no_args(exec_env, arg->module_inst, arg->func)) {
         const char *ex = wasm_runtime_get_exception(arg->module_inst);
+        std::cout << "[WASM Thread] thread " << tls_thread_id
+                  << " failed to call function: " << (ex ? ex : "(null)") << "\n";
         std::fprintf(stderr,
                      "wasm thread failed: %s\n",
                      ex ? ex : "(null)");
@@ -74,7 +76,15 @@ bool start_wasm_thread(WASMModuleInstanceCommon *module_inst,
     }
 
     pthread_t tid;
-    int err = pthread_create(&tid, nullptr, wasm_thread_entry, arg);
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+
+    // Set smaller stack (e.g., 64 KB instead of default 2 MB)
+    pthread_attr_setstacksize(&attr, THREAD_STACK_SIZE);
+
+    int err = pthread_create(&tid, &attr, wasm_thread_entry, arg);
+    pthread_attr_destroy(&attr); // optional cleanup
+    // int err = pthread_create(&tid, nullptr, wasm_thread_entry, arg);
     if (err != 0) {
         std::fprintf(stderr,
                      "pthread_create failed: %s\n",

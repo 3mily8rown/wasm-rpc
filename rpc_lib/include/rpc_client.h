@@ -53,7 +53,6 @@ private:
     template<typename T>
     bool pollResponse(uint32_t expected_tag, uint32_t req_id, T* out_msg);
 
-    // Optional: ID counter if you want to auto-generate request IDs
     uint32_t next_request_id_ = 1;
 };
 

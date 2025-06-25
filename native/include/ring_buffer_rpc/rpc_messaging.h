@@ -26,6 +26,21 @@ struct ResponseSlot {
 
 };
 
+struct SyncResponseSlot {
+    std::uint8_t ptr;
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::atomic<bool> ready = false;
+
+    // Waits for data or times out
+    bool wait_for_data(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mtx);
+        return cv.wait_for(lock, timeout, [&]() {
+            return ready.load(std::memory_order_acquire);
+        });
+    }
+};
+
 // Globals (defined in rpc_messaging.cpp)
 extern std::unordered_map<uint32_t, ResponseSlot*> g_response_slots;
 extern std::mutex g_response_slots_mtx;

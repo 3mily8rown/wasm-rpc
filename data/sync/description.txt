@@ -1,7 +1,0 @@
-client sends 10,000 messages
-
-measure:
-* rtt per message
-* average time per message
-* calc throuput from total time
-* rss and cpu usage

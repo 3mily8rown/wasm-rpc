@@ -5,14 +5,20 @@
 #include "rpc_client.h"
 #include "rpc_envelope.pb.h"
 #include <iostream>
+#include <chrono>
 #include <unordered_set>
-#include <time.h>
 
-
-extern "C" {
-    int64_t get_time_us();
-    void send_rtt(uint32_t time_us);
-    void send_total(uint32_t time_us, uint32_t count);
+int64_t get_time_us() {
+    using namespace std::chrono;
+    return duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
+}
+void send_rtt(uint32_t time_us) {
+    std::cout << "[METRICS] RTT = " << time_us << "μs" << std::endl;
+}
+void send_total(uint32_t total_time_us, int count) {
+    std::cout << "[METRICS] TOTAL TIME = " << total_time_us << "μs for message size " << count << std::endl;
+    // uint32_t throughput = (count > 0) ? (total_time_us / count) : 0;
+    // std::cout << "[METRICS] THROUGHPUT = " << throughput << "μs" << std::endl;
 }
 
 // main function implemenations for evaluation purposes
@@ -146,9 +152,9 @@ int send_async_messages_test(int count) {
 
     struct timespec ts;
     ts.tv_sec = 0;
-    ts.tv_nsec = 50 * 1000; // 50 microseconds
+    ts.tv_nsec = 50 * 1000;
 
-    // 2. Poll until all responses received
+    // Poll until all responses received
     std::string result;
     while (!pending_ids.empty()) {
         std::vector<uint32_t> completed;
@@ -268,7 +274,7 @@ int send_varied_batch(int batch_size, int count) {
 
         int64_t t0 = get_time_us();
 
-        // 1. Send all batches
+        // Send all batches
         for (int i = 0; i < num_batches; ++i) {
             std::vector<std::string> messages;
             for (int j = 0; j < batch_size; ++j) {
@@ -285,7 +291,7 @@ int send_varied_batch(int batch_size, int count) {
             pending_batches.insert(batch_id);
         }
         // std::fprintf(stdout, "Sent %d batches of size %d\n", num_batches, batch_size);
-        // 2. Poll until all batch responses received
+        // Poll until all batch responses received
         while (!pending_batches.empty()) {
             std::vector<uint32_t> completed;
 
@@ -327,7 +333,7 @@ int main() {
 
     // batch message tests
     // send_batch_messages(1);
-    // send_varied_batch(15, 2000);
+    // send_varied_batch(10, 2000);
 
     // other endpoints
     // send_add_random(5);

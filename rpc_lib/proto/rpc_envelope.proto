@@ -24,6 +24,14 @@ message RpcResponse {
   bool status = 6; 
 }
 
+service MyService {
+  rpc SendMessage(SendMessage) returns (SendMessageResponse);
+  rpc AddRandom(AddRandom) returns (AddRandomResponse);
+  rpc ProcessFloats(ProcessFloats) returns (ProcessFloatsResponse);
+  rpc BatchSendMessage(BatchSendMessage) returns (BatchResponse);
+}
+
+
 
 message SendMessage {
   int32 id   = 1;

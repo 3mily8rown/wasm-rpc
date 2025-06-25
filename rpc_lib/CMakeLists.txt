@@ -152,6 +152,8 @@ target_compile_options(rpc_lib
     -fno-exceptions
     -fno-rtti
 )
+# target_compile_definitions(rpc_lib PUBLIC PB_FIELD_32BIT)
+
 set_target_properties(rpc_lib PROPERTIES
   POSITION_INDEPENDENT_CODE ON
   PUBLIC_HEADER "include/rpc_client.h;include/rpc_server.h"

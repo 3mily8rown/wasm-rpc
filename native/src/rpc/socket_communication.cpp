@@ -11,6 +11,13 @@
 #include "ring_buffer_rpc/rpc_messaging.h"
 #include "rpc/socket_communication.h"
 
+#include <unordered_map>
+#include <mutex>
+
+static std::mutex sock_mutex;
+static std::unordered_map<uint16_t, int> persistent_sockets;
+
+
 static constexpr int MAX_CONNECT_ATTEMPTS = 5;
 static constexpr int MAX_SEND_ATTEMPTS    = 3;
 static constexpr int INITIAL_BACKOFF_MS   = 100;
@@ -20,18 +27,17 @@ in_addr_t resolve_ip_or_throw(const char* hostname);
 
 void socket_listener(int port, in_addr_t ip) {
     std::cout << "[Native] Starting socket going to listen on port " << port << "\n";
-    // 1) Create socket
+
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         perror("[Native] socket");
         exit(1);
     }
 
-    // 2) Bind to ALL interfaces
     sockaddr_in addr{};
     addr.sin_family      = AF_INET;
     addr.sin_port        = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);            // <-- key change
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     char ip_buf[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &addr.sin_addr, ip_buf, sizeof(ip_buf));
@@ -46,9 +52,7 @@ void socket_listener(int port, in_addr_t ip) {
         perror("[Native] listen");
         exit(1);
     }
-    // std::cout << "[Native] Host listening on port " << port << "...\n";
 
-    // 3) Accept loop
     while (true) {
         int client_fd = accept(server_fd, nullptr, nullptr);
         if (client_fd < 0) {
@@ -56,45 +60,59 @@ void socket_listener(int port, in_addr_t ip) {
             continue;
         }
 
-        // 4) Read loop
-        uint8_t buffer[1024];
-        ssize_t n;
-        while ((n = read(client_fd, buffer, sizeof(buffer))) > 0) {
-            // std::cout << "[Native] Received " << n << " bytes on port " << port << "\n";
+        // Read length-prefixed messages
+        while (true) {
+            uint32_t msg_len = 0;
+            ssize_t r = recv(client_fd, &msg_len, sizeof(msg_len), MSG_WAITALL);
+            if (r == 0) break;  // client closed connection
+            if (r < 0) {
+                perror("[Native] recv (length)");
+                break;
+            }
+            if (r != sizeof(msg_len)) {
+                std::cerr << "[Native] Failed to read length prefix\n";
+                break;
+            }
+
+            if (msg_len == 0 || msg_len > 65536) {
+                std::cerr << "[Native] Rejected invalid message length: " << msg_len << "\n";
+                break;
+            }
+
+            std::vector<uint8_t> buffer(msg_len);
+            r = recv(client_fd, buffer.data(), msg_len, MSG_WAITALL);
+            if (r != static_cast<ssize_t>(msg_len)) {
+                std::cerr << "[Native] Incomplete message read\n";
+                break;
+            }
+
+            // Handle the message
             if (port == message_port) {
-                queue_message(buffer, n);
-                // std::cout << "[Native] Queued message for server\n";
+                queue_message(buffer.data(), msg_len);
             } else if (port == response_port) {
-                if (n < 4) {
-                    // Not enough data to extract request_id
-                    std::cerr << "Received response too short to contain request ID\n";
-                    return;
+                if (msg_len < 4) {
+                    std::cerr << "[Native] Response too short for request_id\n";
+                    break;
                 }
 
-                // Extract request_id from the first 4 bytes (little-endian)
                 uint32_t request_id =
-                    (uint32_t(buffer[0])      )
+                      (uint32_t(buffer[0])      )
                     | (uint32_t(buffer[1]) << 8 )
                     | (uint32_t(buffer[2]) << 16)
                     | (uint32_t(buffer[3]) << 24);
 
-                // Advance the buffer pointer and reduce size
-                deliver_response(request_id, buffer + 4, n - 4);
-            }
-            else {
+                deliver_response(request_id, buffer.data() + 4, msg_len - 4);
+            } else {
                 std::cerr << "[Native] Unknown port: " << port << "\n";
             }
         }
 
-        if (n < 0) {
-            perror("[Native] read");
-        }
         close(client_fd);
     }
 
-    // never actually reached
     close(server_fd);
 }
+
 
 
 void socket_response_listener(int port, in_addr_t ip) {
@@ -128,50 +146,53 @@ bool try_connect_with_retry(int sock,
 }
 
 void send_over_socket(const uint8_t* data, uint32_t length, const char* ip, uint16_t port) {
-    // std::cout << "[Native] Sending to " << ip << ":" << port << "\n";
-
     std::string tag = (port == message_port) ? "[Client] " : "[Server] ";
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        perror((tag + " socket").c_str());
-        return;
+
+    std::lock_guard<std::mutex> lock(sock_mutex);
+
+    int& sock = persistent_sockets[port];
+    if (sock <= 0) {
+        std::cout << "making a socket \n";
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) {
+            perror((tag + " socket").c_str());
+            return;
+        }
+
+        sockaddr_in server_addr{};
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(port);
+        try {
+            server_addr.sin_addr.s_addr = resolve_ip_or_throw(ip);
+        } catch (const std::exception& e) {
+            std::cerr << "[Native] Failed to resolve '" << ip << "': " << e.what() << "\n";
+            close(sock);
+            sock = -1;
+            return;
+        }
+
+        if (!try_connect_with_retry(sock, &server_addr, sizeof(server_addr), tag)) {
+            std::fprintf(stderr, "%s Failed to connect to %s:%u\n", tag.c_str(), ip, port);
+            close(sock);
+            sock = -1;
+            return;
+        }
     }
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    try {
-        server_addr.sin_addr.s_addr = resolve_ip_or_throw(ip);
-    } catch (const std::exception& e) {
-        std::cerr << "[Native] Failed to resolve '" << ip << "': "
-                  << e.what() << "\n";
-        close(sock);
-        return;
-    }
+    uint32_t len_le = length;
+    std::vector<uint8_t> framed(sizeof(len_le) + length);
+    std::memcpy(framed.data(), &len_le, sizeof(len_le));
+    std::memcpy(framed.data() + sizeof(len_le), data, length);
 
+    ssize_t sent = send(sock, framed.data(), framed.size(), 0);
 
-
-    // std::cout << tag << " [Native] Attempting to connect to " << ip << ":" << port << "\n";
-    bool result = try_connect_with_retry(sock, &server_addr, sizeof(server_addr), tag);
-    // std::cout << "[Native] connect() returned " << result << "\n";
-
-    // if (result < 0) {
-    if (!result) {
-        perror((tag + " connect").c_str());
-        std::fprintf(stderr, "%s Dropping undeliverable message (%u bytes)\n", tag.c_str(), length);
-        close(sock);
-        return;
-    }
-
-    ssize_t sent = send(sock, data, length, 0);
     if (sent < 0) {
         perror((tag + " send").c_str());
-    } else if (static_cast<uint32_t>(sent) != length) {
-        std::fprintf(stderr, "%s Partial send: %zd of %u bytes\n", tag.c_str(), sent, length);
+    } else if (static_cast<uint32_t>(sent) != framed.size()) {
+        std::fprintf(stderr, "%s Partial send: %zd of %zu bytes\n", tag.c_str(), sent, framed.size());
     }
-
-    close(sock);
 }
+
 
 void send_response_over_socket(const uint8_t* data, uint32_t length, const char* ip, uint16_t port) {
     // std::cout << "[Native] Sending response to " << ip << ":" << port << "\n";
@@ -220,4 +241,13 @@ in_addr_t resolve_ip_or_throw(const char* hostname) {
     std::memcpy(&ip, host->h_addr, host->h_length);
     return ip;
 }
+
+void cleanup_sockets() {
+    std::lock_guard<std::mutex> lock(sock_mutex);
+    for (auto& [port, sock] : persistent_sockets) {
+        if (sock >= 0) close(sock);
+        sock = -1;
+    }
+}
+
 
