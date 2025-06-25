@@ -39,7 +39,7 @@ int main() {
     // debugger needs larger stack? Get Native stack overflow error when configured cmake with debug
     uint32_t buf_size, stack_size = 8092, heap_size = 8092;
   
-    static char global_heap_buf[512 * 1024];
+    static char global_heap_buf[256 * 1024];
     RuntimeInitArgs init_args;
   
     memset(&init_args, 0, sizeof(RuntimeInitArgs));
@@ -59,7 +59,8 @@ int main() {
 
     // ------------------------------------------------------- load each module
   
-    std::string client_wasm_path = Config::get("WASM_OUT") + "/client_app.wasm";
+    // std::string client_wasm_path = Config::get("WASM_OUT") + "/client_app.wasm";
+    std::string client_wasm_path = Config::get("WASM_OUT") + "/client_app.aot";
     auto client_buffer = readFileToBytes(client_wasm_path);
   
     // load module and create execution environment
@@ -71,11 +72,21 @@ int main() {
     // ------------------------------
     // start socket listener
     pthread_t socket_thread;
-    pthread_create(&socket_thread, nullptr, [](void* arg) -> void* {
-        auto* module_inst = static_cast<wasm_module_inst_t>(arg);
-        socket_listener(module_inst, response_port);
+    // pthread_create(&socket_thread, nullptr, [](void* arg) -> void* {
+    //     auto* module_inst = static_cast<wasm_module_inst_t>(arg);
+    //     socket_listener(response_port, INADDR_ANY);
+    //     return nullptr;
+    // }, client_module_inst);
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 64 * 1024);  // Or use THREAD_STACK_SIZE
+
+    pthread_create(&socket_thread, &attr, [](void* arg) -> void* {
+        socket_listener(response_port, INADDR_ANY);
         return nullptr;
     }, client_module_inst);
+
+    pthread_attr_destroy(&attr);
 
     sleep(1);
 
@@ -89,10 +100,10 @@ int main() {
       return 1;
     }
 
-    auto start = std::chrono::high_resolution_clock::now();
+    // auto start = std::chrono::high_resolution_clock::now();
 
     pthread_t c_th;
-    if (!start_wasm_thread(client_module_inst, client_func, &c_th)) {
+    if (!start_wasm_thread(client_module_inst, client_func, 1, &c_th)) {
       std::fprintf(stderr, "Thread spawn failed\n");
     }
 
@@ -100,10 +111,10 @@ int main() {
     // wait for branches
     pthread_join(c_th, nullptr); 
     
-    auto end = std::chrono::high_resolution_clock::now();
-    double duration_us = std::chrono::duration<double, std::micro>(end - start).count();
+    // auto end = std::chrono::high_resolution_clock::now();
+    // double duration_us = std::chrono::duration<double, std::micro>(end - start).count();
 
-    std::cout << "[METRIC] Round-trip latency: " << duration_us << " us\n";
+    // std::cout << "[METRIC] Round-trip latency: " << duration_us << " us\n";
     // pthread_join(socket_thread, nullptr);  
 
     wasm_runtime_deinstantiate(client_module_inst);

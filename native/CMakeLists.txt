@@ -1,15 +1,22 @@
 cmake_minimum_required(VERSION 3.8)
 project(MultiHostRPC C CXX)
 
+set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_C_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+
+
 # --------------------------------------------------
 # Shared source files
 # --------------------------------------------------
 file(GLOB_RECURSE RPC_SOURCES "src/rpc/*.cpp")
 file(GLOB_RECURSE WAMR_SOURCES "src/wamr/*.cpp")
 file(GLOB_RECURSE WASM_SOURCES "src/wasm/*.cpp")
+file(GLOB_RECURSE MESSAGE_SOURCES "src/ring_buffer_rpc/*.cpp")
 
 set(SHARED_SOURCES
   ${RPC_SOURCES}
+  ${MESSAGE_SOURCES}
   ${WAMR_SOURCES}
   ${WASM_SOURCES}
 )
@@ -25,6 +32,7 @@ foreach(HOST ${HOST_NAMES})
 
   target_include_directories(${HOST} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ring_buffer_rpc"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/rpc"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/wamr"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/wasm"
@@ -55,7 +63,7 @@ set(WAMR_BUILD_PLATFORM "linux")
 set(WAMR_BUILD_TARGET X86_64)
 set(WAMR_BUILD_SPEC_TEST 0)
 set(WAMR_BUILD_INTERP 1)
-set(WAMR_BUILD_AOT 0)
+set(WAMR_BUILD_AOT 1)
 set(WAMR_BUILD_JIT 0)
 set(WAMR_BUILD_LAZY_JIT 0)
 set(WAMR_BUILD_LIBC_BUILTIN 1)

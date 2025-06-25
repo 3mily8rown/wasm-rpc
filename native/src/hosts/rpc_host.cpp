@@ -13,6 +13,26 @@
 #include "client_app_imports.h"
 #include "server_app_imports.h"
 
+struct WasmInstance {
+    wasm_module_t module = nullptr;
+    wasm_module_inst_t module_inst = nullptr;
+    wasm_exec_env_t exec_env = nullptr;
+    pthread_t thread;
+};
+
+
+bool init_wasm_instance(WasmInstance &inst, const std::string &path,
+                        uint32_t stack_size, uint32_t heap_size,
+                        char *error_buf, size_t error_buf_size) {
+    auto buffer = readFileToBytes(path);
+    inst.module = load_module_minimal(buffer, inst.module_inst, inst.exec_env,
+                                      stack_size, heap_size, error_buf, error_buf_size);
+    buffer.clear();
+    buffer.shrink_to_fit(); // (optional) actually releases memory to OS
+
+    return inst.module != nullptr;
+}
+
 static const size_t all_env_native_symbols_count =
 generated_client_app_native_symbols_count +
 generated_server_app_native_symbols_count;
@@ -34,95 +54,95 @@ void register_all_env_symbols() {
 }
 
 int main() {
-    // setting up wasm module
     wasm_runtime_set_log_level(WASM_LOG_LEVEL_DEBUG);
-  
-    // ------------------------------------------ per module
-    wasm_module_t client_module = nullptr;
-    wasm_module_inst_t client_module_inst = nullptr;
-    wasm_exec_env_t client_exec_env = nullptr;
 
-    wasm_module_t server_module = nullptr;
-    wasm_module_inst_t server_module_inst = nullptr;
-    wasm_exec_env_t server_exec_env = nullptr;
-
-    // ------------------------------------------ wamr overall setup
-    char error_buf[128];
-
-    // debugger needs larger stack? Get Native stack overflow error when configured cmake with debug
-    uint32_t buf_size, stack_size = 8092, heap_size = 8092;
-  
-    static char global_heap_buf[512 * 1024];
+    // ------------------ WAMR global init ------------------
+    static char global_heap_buf[1 * 512 * 1024];  // increased heap
     RuntimeInitArgs init_args;
-  
     memset(&init_args, 0, sizeof(RuntimeInitArgs));
     init_args.mem_alloc_type = Alloc_With_Pool;
-    
     init_args.mem_alloc_option.pool.heap_buf = global_heap_buf;
     init_args.mem_alloc_option.pool.heap_size = sizeof(global_heap_buf);
-  
+
     if (!wasm_runtime_full_init(&init_args)) {
-      printf("Init runtime environment failed.\n");
-      return -1;
+        fprintf(stderr, "Init runtime environment failed.\n");
+        return -1;
     }
-  
+
     wasm_runtime_set_log_level(WASM_LOG_LEVEL_VERBOSE);
-  
     register_all_env_symbols();
 
-    // ------------------------------------------------------- load each module
-  
-    std::string client_wasm_path = Config::get("WASM_OUT") + "/client_app.wasm";
-    auto client_buffer = readFileToBytes(client_wasm_path);
-  
-    // load module and create execution environment
-    client_module = load_module_minimal(client_buffer, client_module_inst, client_exec_env, stack_size, heap_size, error_buf, sizeof(error_buf));
-    if (!client_module) {
-      return 1;
+    colocated = true; // global flag
+
+    // ------------------ Setup ------------------
+    const int NUM_CLIENTS = 1;
+    const int NUM_SERVERS = 1;
+    uint32_t stack_size = 1 * 128;
+    uint32_t heap_size  = 1 * 128;
+
+    std::string client_path = Config::get("WASM_OUT") + "/client_app.aot";
+    std::string server_path = Config::get("WASM_OUT") + "/server_app.aot";
+
+    std::vector<WasmInstance> clients(NUM_CLIENTS);
+    std::vector<WasmInstance> servers(NUM_SERVERS);
+
+    char error_buf[128];
+
+    // ------------------ Load Clients ------------------
+    for (int i = 0; i < NUM_CLIENTS; ++i) {
+        auto buffer = readFileToBytes(client_path);
+        clients[i].module = load_module_minimal(
+            buffer,
+            clients[i].module_inst,
+            clients[i].exec_env,
+            stack_size,
+            heap_size,
+            error_buf,
+            sizeof(error_buf)
+        );
+        buffer.clear();
+        // buffer.shrink_to_fit();
+
+        if (!clients[i].module) return 1;
+
+        auto func = wasm_runtime_lookup_function(clients[i].module_inst, "_start");
+        if (!func || !start_wasm_thread(clients[i].module_inst, func, i, &clients[i].thread)) {
+            std::fprintf(stderr, "Failed to start client %d\n", i);
+            return 1;
+        }
     }
 
-    // ----------------
+    // ------------------ Load Servers ------------------
+    for (int i = 0; i < NUM_SERVERS; ++i) {
+        auto buffer = readFileToBytes(server_path);
+        servers[i].module = load_module_minimal(
+            buffer,
+            servers[i].module_inst,
+            servers[i].exec_env,
+            stack_size,
+            heap_size,
+            error_buf,
+            sizeof(error_buf)
+        );
+        buffer.clear();
+        // buffer.shrink_to_fit();
 
-    std::string server_wasm_path = Config::get("WASM_OUT") + "/server_app.wasm";
-    auto server_buffer = readFileToBytes(server_wasm_path);
-  
-    // load module and create execution environment
-    server_module = load_module_minimal(server_buffer, server_module_inst, server_exec_env, stack_size, heap_size, error_buf, sizeof(error_buf));
-    if (!server_module) {
-      return 1;
+        if (!servers[i].module) return 1;
+
+        auto func = wasm_runtime_lookup_function(servers[i].module_inst, "_start");
+        if (!func || !start_wasm_thread(servers[i].module_inst, func, i + NUM_CLIENTS, &servers[i].thread)) {
+            std::fprintf(stderr, "Failed to start server %d\n", i);
+            return 1;
+        }
     }
 
-    // ---------------------------------------------------------------- client
-
-    wasm_runtime_set_log_level(WASM_LOG_LEVEL_ERROR);
-    // calling client main function
-    auto client_func = wasm_runtime_lookup_function(client_module_inst, "_start");
-    if (!client_func) {
-      fprintf(stderr, "_start wasm function is not found.\n");
-      return 1;
-    }
-
-    pthread_t c_th;
-    if (!start_wasm_thread(client_module_inst, client_func, &c_th)) {
-      std::fprintf(stderr, "Thread spawn failed\n");
-    }
-
-    // ---------------------------------------------- server
-    auto server_func = wasm_runtime_lookup_function(server_module_inst, "_start");
-    if (!server_func) {
-      fprintf(stderr, "_start wasm function is not found.\n");
-      return 1;
-    }
-
-    pthread_t s_th;
-    if (!start_wasm_thread(server_module_inst, server_func, &s_th)) {
-      std::fprintf(stderr, "Thread spawn failed\n");
-    }
-
-    // ------------------------------
-    // wait for branches
-    pthread_join(s_th, nullptr);  
-    pthread_join(c_th, nullptr);  
+    // ------------------ Join Threads ------------------
+    for (auto& c : clients)
+        pthread_join(c.thread, nullptr);
+    for (auto& s : servers)
+        pthread_join(s.thread, nullptr);
 
     return 0;
 }
+
+

@@ -1,5 +1,0 @@
-RpcEnvelope.method max_size: 64
-RpcEnvelope.payload max_size: 256
-
-RpcResponse.payload max_size: 256
-RpcResponse.status max_size: 64

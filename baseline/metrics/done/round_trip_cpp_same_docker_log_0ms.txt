@@ -1,0 +1,19 @@
+Run,Timestamp,Metric
+1,2025-06-02T17:32:38,cpp_client_container  | RTT = 982 μs
+2,2025-06-02T17:32:49,cpp_client_container  | RTT = 1002 μs
+3,2025-06-02T17:33:00,cpp_client_container  | RTT = 1104 μs
+4,2025-06-02T17:33:11,cpp_client_container  | RTT = 1194 μs
+5,2025-06-02T17:33:23,cpp_client_container  | RTT = 1115 μs
+6,2025-06-02T17:33:34,cpp_client_container  | RTT = 986 μs
+7,2025-06-02T17:33:45,cpp_client_container  | RTT = 1023 μs
+8,2025-06-02T17:33:56,cpp_client_container  | RTT = 1065 μs
+9,2025-06-02T17:34:08,cpp_client_container  | RTT = 1060 μs
+10,2025-06-02T17:34:19,cpp_client_container  | RTT = 3998 μs
+11,2025-06-02T17:34:30,cpp_client_container  | RTT = 1038 μs
+12,2025-06-02T17:34:41,cpp_client_container  | RTT = 1126 μs
+13,2025-06-02T17:34:53,cpp_client_container  | RTT = 1018 μs
+14,2025-06-02T17:35:04,cpp_client_container  | RTT = 1212 μs
+15,2025-06-02T17:35:15,cpp_client_container  | RTT = 1037 μs
+16,2025-06-02T17:35:26,cpp_client_container  | RTT = 981 μs
+17,2025-06-02T17:35:38,cpp_client_container  | RTT = 1071 μs
+18,2025-06-02T17:35:49,cpp_client_container  | RTT = 1000 μs

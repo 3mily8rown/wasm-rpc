@@ -1,3 +1,0 @@
-[submodule "third_party/pigweed"]
-	path = third_party/pigweed
-	url = https://github.com/google/pigweed.git

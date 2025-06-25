@@ -2,13 +2,10 @@ cmake_minimum_required(VERSION 3.15)
 project(super LANGUAGES NONE)
 include(ExternalProject)
 
-# -----------------------------------------------------------------
-# protoc
-# -----------------------------------------------------------------
-find_program(SYSTEM_PROTOC protoc)
-if(NOT SYSTEM_PROTOC)
-  message(FATAL_ERROR "protoc not found; please install protobuf-compiler")
-endif()
+# TODO: set this to your WASI SDK path
+set(WASI_TOOLCHAIN_FILE "/home/eb/fyp/wasi-sdk-25.0-x86_64-linux/share/cmake/wasi-sdk.cmake")
+set(WAMRC_EXECUTABLE "/home/eb/fyp/wasm-micro-runtime/wamr-compiler/build/wamrc")
+
 
 # -----------------------------------------------------------------
 # wasm (needs protoc for proto messages)
@@ -19,13 +16,12 @@ ExternalProject_Add(wasm
   INSTALL_DIR ${CMAKE_BINARY_DIR}/install
 
   CMAKE_ARGS
-        -DCMAKE_TOOLCHAIN_FILE=/home/eb/fyp/wasi-sdk-25.0-x86_64-linux/share/cmake/wasi-sdk.cmake
-        -DPROTOC_EXECUTABLE=${SYSTEM_PROTOC}
+        -DCMAKE_TOOLCHAIN_FILE=${WASI_TOOLCHAIN_FILE}
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-        -DPROTO_DIR=${CMAKE_SOURCE_DIR}/wasm/proto_messages
+        -DPROTO_DIR=${CMAKE_SOURCE_DIR}/wasm/generated_nano
         -DIMPORTS_DIR=<INSTALL_DIR>/generated
         -DSCRIPT_DIR=${CMAKE_SOURCE_DIR}/host_tools/scripts
-        -DPIGWEED_DIR=${CMAKE_SOURCE_DIR}/third_party/pigweed
+        -DWAMRC_EXECUTABLE=${WAMRC_EXECUTABLE}
 
   UPDATE_COMMAND ""
   BUILD_ALWAYS 1

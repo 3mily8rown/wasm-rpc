@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+message RpcEnvelope {
+  uint32 request_id = 1;
+
+  oneof payload {
+    SendMessage msg = 2;
+    AddRandom rand = 3;
+    ProcessFloats flt = 4;
+    BatchSendMessage batch_msg = 5;
+  }
+}
+
+message RpcResponse {
+  uint32 request_id = 1;
+
+  oneof payload {
+    SendMessageResponse msg = 2;
+    AddRandomResponse rand = 3;
+    ProcessFloatsResponse flt = 4;
+    BatchResponse batch_msg = 5;
+  }
+
+  bool status = 6; 
+}
+
+
+message SendMessage {
+  int32 id   = 1;
+  string name = 2;
+}
+message SendMessageResponse {
+  int32 id = 1;
+  string  info = 2;
+}
+
+message AddRandom {
+  int32 num = 1;
+}
+message AddRandomResponse {
+  int32 sum = 1;
+}
+
+message ProcessFloats {
+  repeated float num = 1;
+}
+message ProcessFloatsResponse {
+  float sum = 1;
+}
+
+message BatchSendMessage {
+  repeated SendMessage messages = 1;
+}
+
+message BatchResponse {
+  repeated SendMessageResponse responses = 1;
+}

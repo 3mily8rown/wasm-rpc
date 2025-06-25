@@ -1,0 +1,7 @@
+SendMessage.name               max_size:256
+SendMessageResponse.info       max_size:256
+
+ProcessFloats.num              max_count:16
+
+BatchSendMessage.messages      max_count:20
+BatchResponse.responses        max_count:20

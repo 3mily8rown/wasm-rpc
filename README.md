@@ -36,7 +36,7 @@ Examples assume you’re using the included `CMakePresets.json` file:
 
 ---
 
-### 📎 Note
+###  Note
 
 Initial code was brought across from the experimental repository:  
-👉 [https://github.com/3mily8rown/fyp](https://github.com/3mily8rown/fyp)
+[https://github.com/3mily8rown/fyp](https://github.com/3mily8rown/fyp)

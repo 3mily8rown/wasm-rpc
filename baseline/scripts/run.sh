@@ -1,7 +1,7 @@
 # from inside baseline directory
 # NOT FROM ROOT DIRECTORY PLS    
 
-if [ "$(basename "$PWD")" != "baseline" ]; then
+if [ "$(basename "$PWD")" != "baseline2" ]; then
   echo "This script must be run from inside the 'baseline' directory!"
   exit 1
 fi
